@@ -37,11 +37,11 @@
 
   <script>
     const supabaseUrl = 'https://zavspmqjmrinfxenbosz.supabase.co';
-    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InphdnNwbXFqbXJpbmZ4ZW5ib3N6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0NTkzOTksImV4cCI6MjEwNDAzNTM5OX0.7K-EFRRgLmLOh8BltHDH0qh61TDLbLlzCjJ5jBMXCc8'; // Replace with your actual anon public key
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InphdnNwbXFqbXJpbmZ4ZW5ib3N6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0NTkzOTksImV4cCI6MjEwNDAzNTM5OX0.7K-EFRRgLmLOh8BltHDH0qh61TDLbLlzCjJ5jBMXCc8';
     const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
 
     async function handleRedirect() {
-      // Extract slug from URL path (e.g., /cafe-bloom -> cafe-bloom)
+      // Extract slug from URL path (e.g., /my-phone-ahilyanagar -> my-phone-ahilyanagar)
       const slug = window.location.pathname.replace(/^\/+|\/+$/g, '');
 
       if (!slug) {
@@ -62,13 +62,17 @@
         return;
       }
 
-      // 2. Increment analytics asynchronously with composite keys
-      supabaseClient.rpc('increment_tap', {
-        client_slug: slug,
-        client_platform: 'google'
-      });
+      // 2. Await the tap increment so it finishes before redirecting
+      try {
+        await supabaseClient.rpc('increment_tap', {
+          client_slug: slug,
+          client_platform: 'google'
+        });
+      } catch (err) {
+        console.error('Failed to increment tap:', err);
+      }
 
-      // 3. Immediately redirect to Google
+      // 3. Redirect to Google after the database has successfully updated
       window.location.replace(data.destination_url);
     }
 
