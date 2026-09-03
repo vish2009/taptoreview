@@ -1,0 +1,209 @@
+# TapToReview — Project Architecture & Implementation Documentation
+
+This document serves as the comprehensive technical reference for the TapToReview multi-tenant SaaS architecture, tracking system, and Supabase integration.
+
+---
+
+## 1. System Architecture Overview
+
+The system bridges a lightweight static frontend (hosted on GitHub Pages) with a backend-less PostgreSQL database managed via Supabase. It uses client-side routing to handle dynamic short links without a traditional server runtime.
+
+* **Frontend Hosting:** Static site deployed via GitHub Pages across independent domains (`taptoreview.in`, `taptofollow.in`, `taptowhatsapp.in`).
+* **Backend & Database:** Supabase (PostgreSQL) handling real-time data ingestion, atomic analytics counters, and multi-tenant isolation via platform identifiers.
+* **Redirection Engine:** A custom catch-all `404.html` script that intercepts non-existent path requests, looks up the target destination, tracks metrics, and executes instantaneous client-side redirects.
+
+---
+
+## 2. Database Schema & Tables
+
+### A. `registrations` Table
+
+Stores incoming orders submitted by business owners through the website's onboarding form. This acts as an initial intake queue before cards are physically fulfilled.
+
+| Column Name | Data Type | Constraints | Description |
+| --- | --- | --- | --- |
+| `id` | uuid | PRIMARY KEY | Unique identifier for the registration entry. |
+| `business_name` | text | NOT NULL | Name of the business (e.g., "Cafe Bloom"). |
+| `city_location` | text | NOT NULL | City and state of the business. |
+| `whatsapp_number` | text | NOT NULL | Contact number for order follow-ups. |
+| `card_quantity` | text | NULL | Selected pack size (e.g., 1, 3, 5, 10). |
+| `destination_url` | text | NOT NULL | The target redirect link (Google Review, Instagram profile, or WhatsApp chat). |
+| `platform` | text | NOT NULL | Categorization string (`google`, `instagram`, or `whatsapp`). |
+| `generated_slug` | text | NOT NULL | The unique URL handle (e.g., `cafe-bloom-pune`). |
+| `created_at` | timestamptz | DEFAULT `now()` | Timestamp of form submission. |
+
+*Constraint:* `UNIQUE(generated_slug, platform)` to prevent duplicate business handles on the same platform.
+
+### B. `clients` Table
+
+The production roster containing active, approved links that visitors land on when tapping smart cards.
+
+| Column Name | Data Type | Constraints | Description |
+| --- | --- | --- | --- |
+| `slug` | text | PART OF PRIMARY KEY | The routing handle. |
+| `platform` | text | PART OF PRIMARY KEY | The platform identifier (`google`, `instagram`, `whatsapp`). |
+| `destination_url` | text | NOT NULL | Where the user gets redirected. |
+| `total_taps` | integer | DEFAULT `0` | Aggregate lifetime tap count. |
+| `monthly_taps` | jsonb | DEFAULT `'{}'` | Granular tap breakdown stored by month (`{"2026-09": 14}`). |
+| `yearly_taps` | jsonb | DEFAULT `'{}'` | Granular tap breakdown stored by year (`{"2026": 120}`). |
+| `created_at` | timestamptz | DEFAULT `now()` | Activation timestamp. |
+
+*Primary Key:* Composite key `(slug, platform)` allowing the same short slug to exist independently across Google, Instagram, and WhatsApp domains.
+
+---
+
+## 3. Database Functions & Automations
+
+### A. Automatic Client Provisioning (Trigger)
+
+To eliminate manual entry, a database trigger automatically promotes new rows from the `registrations` intake queue into the active `clients` table the moment a form is submitted.
+
+```sql
+CREATE OR REPLACE FUNCTION public.auto_approve_client()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.clients (slug, platform, destination_url, total_taps, monthly_taps, yearly_taps)
+  VALUES (NEW.generated_slug, NEW.platform, NEW.destination_url, 0, '{}'::jsonb, '{}'::jsonb)
+  ON CONFLICT (slug, platform) DO NOTHING;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER on_registration_created
+AFTER INSERT ON public.registrations
+FOR EACH ROW EXECUTE FUNCTION public.auto_approve_client();
+
+```
+
+### B. Atomic Tap Increment RPC (`increment_tap`)
+
+Handles race conditions when multiple users tap cards simultaneously. It safely updates aggregate totals alongside JSON-backed monthly and yearly historical buckets.
+
+```sql
+CREATE OR REPLACE FUNCTION increment_tap(client_slug text, client_platform text)
+RETURNS void AS $$
+DECLARE
+  current_month text := to_char(now(), 'YYYY-MM');
+  current_year text := to_char(now(), 'YYYY');
+  m_count int;
+  y_count int;
+  m_taps jsonb;
+  y_taps jsonb;
+BEGIN
+  SELECT monthly_taps, yearly_taps,
+         COALESCE((monthly_taps->>current_month)::int, 0),
+         COALESCE((yearly_taps->>current_year)::int, 0)
+  INTO m_taps, y_taps, m_count, y_count
+  FROM public.clients
+  WHERE slug = client_slug AND platform = client_platform;
+
+  m_taps := COALESCE(m_taps, '{}'::jsonb);
+  y_taps := COALESCE(y_taps, '{}'::jsonb);
+
+  UPDATE public.clients
+  SET 
+    total_taps = total_taps + 1,
+    monthly_taps = jsonb_set(m_taps, ARRAY[current_month], to_jsonb(m_count + 1), true),
+    yearly_taps = jsonb_set(y_taps, ARRAY[current_year], to_jsonb(y_count + 1), true)
+  WHERE slug = client_slug AND platform = client_platform;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+```
+
+### C. Live Platform Statistics RPC (`get_platform_stats`)
+
+Aggregates active business counts and total engagement metrics dynamically based on the requesting domain's platform context.
+
+```sql
+CREATE OR REPLACE FUNCTION get_platform_stats(req_platform text)
+RETURNS jsonb AS $$
+DECLARE
+  biz_count integer;
+  tap_count integer;
+BEGIN
+  SELECT count(*), COALESCE(sum(total_taps), 0)
+  INTO biz_count, tap_count
+  FROM public.clients
+  WHERE platform = req_platform;
+
+  RETURN jsonb_build_object(
+    'businesses_onboarded', biz_count,
+    'total_taps', tap_count
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+```
+
+---
+
+## 4. Security & Row Level Security (RLS)
+
+The public project `anon` key is exposed safely on the client-side. Security is enforced entirely at the database layer via strict RLS policies and function execution grants:
+
+```sql
+-- Enable security controls
+ALTER TABLE public.registrations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY;
+
+-- Allow public website visitors to register orders
+CREATE POLICY "Allow public inserts" ON public.registrations FOR INSERT TO anon WITHCHECK (true);
+
+-- Allow redirection handler to query active destination links
+CREATE POLICY "Allow public read" ON public.clients FOR SELECT TO anon USING (true);
+
+-- Grant public execution rights to RPC endpoints
+GRANT EXECUTE ON FUNCTION increment_tap(text, text) TO anon, public;
+GRANT EXECUTE ON FUNCTION get_platform_stats(text) TO anon, public;
+
+```
+
+---
+
+## 5. Frontend Implementation (`js/app.js` & `404.html`)
+
+### A. Slug Generation & Order Submission (`js/app.js`)
+
+When a business submits the form, strings are cleaned into URL-friendly slugs, persisted to Supabase, and formatted into an order confirmation WhatsApp string:
+
+```javascript
+var baseText = city ? `${biz}-${city}` : biz;
+var slug = baseText
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, '-')
+  .replace(/^-+|-+$/g, '');
+
+```
+
+### B. Redirection & Counter Execution (`404.html`)
+
+The GitHub Pages catch-all handler parses the pathname, fetches the target destination, awaits the tap increment transaction, and completes the redirect:
+
+```javascript
+async function handleRedirect() {
+  const slug = window.location.pathname.replace(/^\/+|\/+$/g, '');
+  if (!slug) { window.location.replace('/'); return; }
+
+  const { data, error } = await supabaseClient
+    .from('clients')
+    .select('destination_url')
+    .eq('slug', slug)
+    .eq('platform', 'google') // Adjusted per domain ('instagram' / 'whatsapp')
+    .single();
+
+  if (error || !data?.destination_url) {
+    document.querySelector('.box').innerHTML = '<h2>Business link not found.</h2>';
+    return;
+  }
+
+  await supabaseClient.rpc('increment_tap', {
+    client_slug: slug,
+    client_platform: 'google'
+  });
+
+  window.location.replace(data.destination_url);
+}
+
+```
