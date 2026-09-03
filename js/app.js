@@ -140,11 +140,36 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  // Animated stat counters
+  
+  // --- Animated stat counters & Live Supabase Stats ---
   var statEls = document.querySelectorAll('.stat-number');
-  if (statEls.length) {
+  
+  async function fetchAndAnimateStats() {
+    if (statEls.length === 0) return;
+
+    // 1. Fetch real stats from Supabase
+    if (supabaseClient) {
+      try {
+        const { data, error } = await supabaseClient.rpc('get_platform_stats', {
+          req_platform: 'google' // Change this for your instagram/whatsapp websites
+        });
+        
+        if (!error && data) {
+          var bizEl = document.getElementById('stat-biz');
+          var tapsEl = document.getElementById('stat-taps');
+          
+          // Update the target numbers dynamically
+          if (bizEl) bizEl.setAttribute('data-target', data.businesses_onboarded);
+          if (tapsEl) tapsEl.setAttribute('data-target', data.total_taps);
+        }
+      } catch (err) {
+        console.error('Error fetching stats:', err);
+      }
+    }
+
+    // 2. Setup the animation logic
     var animateCount = function (el) {
-      var target = parseFloat(el.getAttribute('data-target'));
+      var target = parseFloat(el.getAttribute('data-target')) || 0;
       var decimals = parseInt(el.getAttribute('data-decimal') || '0', 10);
       var duration = 1400;
       var start = performance.now();
@@ -159,6 +184,7 @@ document.addEventListener('DOMContentLoaded', function () {
       requestAnimationFrame(step);
     };
 
+    // 3. Trigger animations when scrolled into view
     if ('IntersectionObserver' in window) {
       var statObserver = new IntersectionObserver(function (entries) {
         entries.forEach(function (entry) {
@@ -176,4 +202,8 @@ document.addEventListener('DOMContentLoaded', function () {
       statEls.forEach(animateCount);
     }
   }
+
+  // Execute the fetch and setup
+  fetchAndAnimateStats();
+  
 });
