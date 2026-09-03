@@ -2,7 +2,7 @@
 document.addEventListener('DOMContentLoaded', function () {
   // Initialize Supabase
   const supabaseUrl = 'https://zavspmqjmrinfxenbosz.supabase.co';
-  const supabaseKey = 'YOUR_ANON_PUBLIC_KEY'; // Replace with your actual anon public key
+  const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InphdnNwbXFqbXJpbmZ4ZW5ib3N6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0NTkzOTksImV4cCI6MjEwNDAzNTM5OX0.7K-EFRRgLmLOh8BltHDH0qh61TDLbLlzCjJ5jBMXCc8'; // Replace with your actual anon public key
   const supabaseClient = window.supabase ? window.supabase.createClient(supabaseUrl, supabaseKey) : null;
 
   // year in footer
