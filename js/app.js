@@ -1,5 +1,10 @@
-// TapToReview - client side behaviors (no data stored, opens WhatsApp with prefilled message).
+// TapToReview - client side behaviors & Supabase integration
 document.addEventListener('DOMContentLoaded', function () {
+  // Initialize Supabase
+  const supabaseUrl = 'https://zavspmqjmrinfxenbosz.supabase.co';
+  const supabaseKey = 'YOUR_ANON_PUBLIC_KEY'; // Replace with your actual anon public key
+  const supabaseClient = window.supabase ? window.supabase.createClient(supabaseUrl, supabaseKey) : null;
+
   // year in footer
   document.getElementById('year').textContent = new Date().getFullYear();
 
@@ -25,13 +30,12 @@ document.addEventListener('DOMContentLoaded', function () {
   // Smooth anchor scrolling
   document.querySelectorAll('a[href^="#"]').forEach(function (anchor) {
     anchor.addEventListener('click', function (e) {
-      // let external or empty anchors behave normally
       var href = this.getAttribute('href');
       if (!href || href === '#' || href.startsWith('http')) return;
       e.preventDefault();
       var el = document.querySelector(href);
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      // close mobile nav if open
+
       if (navList.classList.contains('open')) {
         navList.classList.remove('open');
         navToggle.setAttribute('aria-expanded', 'false');
@@ -44,7 +48,6 @@ document.addEventListener('DOMContentLoaded', function () {
   document.querySelectorAll('.accordion-toggle').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var expanded = this.getAttribute('aria-expanded') === 'true';
-      // toggle this
       this.setAttribute('aria-expanded', String(!expanded));
       var panel = this.nextElementSibling;
       if (!expanded) {
@@ -55,10 +58,10 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
-  // Form: build wa.me link and open in new tab (no server submission)
+  // Form: Save to Supabase and open WhatsApp
   var form = document.getElementById('order-form');
   if (form) {
-    form.addEventListener('submit', function (e) {
+    form.addEventListener('submit', async function (e) {
       e.preventDefault();
       var biz = document.getElementById('biz-name').value.trim();
       var city = document.getElementById('biz-city').value.trim();
@@ -71,21 +74,37 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
       }
 
+      // Generate unique slug (e.g., "Cafe Bloom" + "Pune" -> "cafe-bloom-pune")
+      var baseText = city ? `${biz}-${city}` : biz;
+      var slug = baseText
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+
+      // Store in Supabase registrations table
+      if (supabaseClient) {
+        try {
+          await supabaseClient
+            .from('registrations')
+            .insert([{
+              business_name: biz,
+              city_location: city,
+              destination_url: google,
+              whatsapp_number: contact,
+              card_quantity: qty,
+              generated_slug: slug,
+              platform: 'google'
+            }]);
+        } catch (err) {
+          console.error('Supabase registration error:', err);
+        }
+      }
+
+      // WhatsApp redirection
       var ownerPhone = '917620952720';
-      var message =
-`Hi TapToReview,
-
-Business: ${biz}
-City: ${city}
-GoogleURL: ${google}
-Quantity: ${qty}
-WhatsApp: ${contact}
-
-Please confirm price and delivery.`;
-
+      var message = `Hi TapToReview, Business: ${biz} City: ${city} GoogleURL: ${google} Quantity: ${qty} WhatsApp: ${contact} GeneratedSlug: ${slug} Please confirm price and delivery.`;
       var url = `https://wa.me/${ownerPhone}?text=${encodeURIComponent(message)}`;
       window.open(url, '_blank', 'noopener');
-
       showToast('Opening WhatsApp with your order — please confirm the message and send.');
     });
   }
@@ -111,9 +130,14 @@ Please confirm price and delivery.`;
         }
       });
     }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
-    revealEls.forEach(function (el) { revealObserver.observe(el); });
+
+    revealEls.forEach(function (el) {
+      revealObserver.observe(el);
+    });
   } else {
-    revealEls.forEach(function (el) { el.classList.add('visible'); });
+    revealEls.forEach(function (el) {
+      el.classList.add('visible');
+    });
   }
 
   // Animated stat counters
@@ -124,6 +148,7 @@ Please confirm price and delivery.`;
       var decimals = parseInt(el.getAttribute('data-decimal') || '0', 10);
       var duration = 1400;
       var start = performance.now();
+
       function step(now) {
         var progress = Math.min((now - start) / duration, 1);
         var eased = 1 - Math.pow(1 - progress, 3);
@@ -133,6 +158,7 @@ Please confirm price and delivery.`;
       }
       requestAnimationFrame(step);
     };
+
     if ('IntersectionObserver' in window) {
       var statObserver = new IntersectionObserver(function (entries) {
         entries.forEach(function (entry) {
@@ -142,7 +168,10 @@ Please confirm price and delivery.`;
           }
         });
       }, { threshold: 0.4 });
-      statEls.forEach(function (el) { statObserver.observe(el); });
+
+      statEls.forEach(function (el) {
+        statObserver.observe(el);
+      });
     } else {
       statEls.forEach(animateCount);
     }
