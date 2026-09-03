@@ -37,11 +37,11 @@
 
   <script>
     const supabaseUrl = 'https://zavspmqjmrinfxenbosz.supabase.co';
-    const supabaseKey = 'YOUR_ANON_PUBLIC_KEY'; // Replace with your anon key
+    const supabaseKey = 'YOUR_ANON_PUBLIC_KEY'; // Replace with your actual anon public key
     const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
 
     async function handleRedirect() {
-      // Extract slug from URL path (e.g. /cafe-bloom -> cafe-bloom)
+      // Extract slug from URL path (e.g., /cafe-bloom -> cafe-bloom)
       const slug = window.location.pathname.replace(/^\/+|\/+$/g, '');
 
       if (!slug) {
@@ -49,23 +49,27 @@
         return;
       }
 
-      // 1. Fetch Google Review URL
+      // 1. Fetch destination URL for Google platform
       const { data, error } = await supabaseClient
         .from('clients')
-        .select('google_review_url')
+        .select('destination_url')
         .eq('slug', slug)
+        .eq('platform', 'google')
         .single();
 
-      if (error || !data?.google_review_url) {
+      if (error || !data?.destination_url) {
         document.querySelector('.box').innerHTML = '<h2>Business link not found.</h2>';
         return;
       }
 
-      // 2. Increment analytics asynchronously
-      supabaseClient.rpc('increment_tap', { client_slug: slug });
+      // 2. Increment analytics asynchronously with composite keys
+      supabaseClient.rpc('increment_tap', {
+        client_slug: slug,
+        client_platform: 'google'
+      });
 
       // 3. Immediately redirect to Google
-      window.location.replace(data.google_review_url);
+      window.location.replace(data.destination_url);
     }
 
     handleRedirect();
