@@ -104,7 +104,7 @@ body.no-scroll{overflow:hidden}
 .btn-outline:hover{background:var(--cyan);color:#fff;transform:translateY(-2px)}
 
 /* Hero campaign artwork */
-.hero-banner{justify-self:center;width:min(100%,360px);overflow:hidden;border:1px solid rgba(212,175,55,0.35);border-radius:8px;box-shadow:0 18px 42px rgba(0,0,0,0.35)}
+.hero-banner{justify-self:center;width:min(100%,360px);overflow:hidden;border-radius:8px;box-shadow:0 18px 42px rgba(0,0,0,0.35)}
 .hero-banner img{display:block;width:100%;height:auto}
 
 /* Sections */
@@ -142,7 +142,8 @@ body.no-scroll{overflow:hidden}
 .badge-popular{position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--gold);color:#071029;font-size:0.75rem;font-weight:800;padding:4px 12px;border-radius:999px;white-space:nowrap}
 
 /* CARD PREVIEW */
-.card-preview{margin:22px 0 28px;max-width:520px}
+.order-layout{display:grid;gap:28px;align-items:start}
+.card-preview{margin:0;max-width:none}
 .card-preview-label{color:var(--muted);font-size:0.9rem;margin:0 0 10px}
 .card-preview-svg{width:100%;height:auto;display:block;border-radius:12px;box-shadow:0 18px 40px rgba(0,0,0,0.45)}
 
@@ -196,6 +197,7 @@ select option{background-color:var(--surface);color:var(--text)}
   .testimonial-grid{grid-template-columns:repeat(3,1fr)}
   .pricing-grid{grid-template-columns:repeat(3,1fr)}
   .footer-grid{grid-template-columns:repeat(3,1fr)}
+  .order-layout{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
 }
 @media(max-width:767px){
   .container{padding:18px 16px}
