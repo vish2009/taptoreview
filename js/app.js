@@ -58,6 +58,22 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
+  // Optional Google Review Link Formatter (Only affects Google inputs)
+  function formatGoogleDestination(inputUrl) {
+    let finalUrl = inputUrl.trim();
+
+    if (finalUrl.includes('search.google.com/local/writereview')) {
+      return finalUrl;
+    }
+
+    const placeIdMatch = finalUrl.match(/(?:placeid=|place_id:)([^&?#]+)/);
+    if (placeIdMatch && placeIdMatch[1]) {
+      return `https://search.google.com/local/writereview?placeid=${placeIdMatch[1]}`;
+    }
+
+    return finalUrl;
+  }
+
   // Form: Save to Supabase and open WhatsApp
   var form = document.getElementById('order-form');
   if (form) {
@@ -65,14 +81,17 @@ document.addEventListener('DOMContentLoaded', function () {
       e.preventDefault();
       var biz = document.getElementById('biz-name').value.trim();
       var city = document.getElementById('biz-city').value.trim();
-      var google = document.getElementById('biz-google').value.trim();
+      var rawGoogleInput = document.getElementById('biz-google').value.trim();
       var qty = document.getElementById('biz-qty').value;
       var contact = document.getElementById('biz-contact').value.trim();
 
-      if (!biz || !google || !contact) {
+      if (!biz || !rawGoogleInput || !contact) {
         showToast('Please enter Business Name, Google URL and WhatsApp Number.');
         return;
       }
+
+      // Format destination URL optionally if Google
+      var google = formatGoogleDestination(rawGoogleInput);
 
       // Generate unique slug (e.g., "Cafe Bloom" + "Pune" -> "cafe-bloom-pune")
       var baseText = city ? `${biz}-${city}` : biz;
@@ -84,7 +103,7 @@ document.addEventListener('DOMContentLoaded', function () {
       // Store in Supabase registrations table
       if (supabaseClient) {
         try {
-          await supabaseClient
+          const { error } = await supabaseClient
             .from('registrations')
             .insert([{
               business_name: biz,
@@ -95,8 +114,17 @@ document.addEventListener('DOMContentLoaded', function () {
               generated_slug: slug,
               platform: 'google'
             }]);
+
+          if (error) {
+            if (error.code === '23505') {
+              showToast('This business is already registered with us!');
+              return;
+            } else {
+              console.error('Supabase registration error:', error);
+            }
+          }
         } catch (err) {
-          console.error('Supabase registration error:', err);
+          console.error('Network error during registration:', err);
         }
       }
 
@@ -140,10 +168,8 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  
   // --- Animated stat counters & Live Supabase Stats ---
   var statEls = document.querySelectorAll('.stat-number');
-  
   async function fetchAndAnimateStats() {
     if (statEls.length === 0) return;
 
@@ -205,5 +231,4 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // Execute the fetch and setup
   fetchAndAnimateStats();
-  
 });
