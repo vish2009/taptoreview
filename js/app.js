@@ -222,7 +222,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   fetchAndAnimateStats();
 
-  // --- Dynamic Monthly Leaderboard ---
+  // --- Dynamic Monthly Leaderboard with City ---
   async function loadLeaderboard(selectedCategory = 'All') {
     var tbody = document.getElementById('leaderboard-body');
     if (!tbody || !supabaseClient) return;
@@ -235,12 +235,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
       if (error) {
         console.error('Error fetching leaderboard:', error);
-        tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: #ef4444;">Unable to load leaderboard at the moment.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #ef4444;">Unable to load leaderboard at the moment.</td></tr>`;
         return;
       }
 
       if (!data || data.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--muted);">No taps recorded yet this month. Be the first!</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--muted);">No taps recorded yet this month. Be the first!</td></tr>`;
         return;
       }
 
@@ -255,6 +255,7 @@ document.addEventListener('DOMContentLoaded', function () {
           <tr>
             <td><strong>${rankBadge}</strong></td>
             <td>${escapeHtml(row.business_name)}</td>
+            <td><span class="city-text">${escapeHtml(row.city_location)}</span></td>
             <td><span class="cat-tag">${escapeHtml(row.category)}</span></td>
             <td><strong>${row.monthly_taps_count.toLocaleString('en-IN')} taps</strong></td>
           </tr>
