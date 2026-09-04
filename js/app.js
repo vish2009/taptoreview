@@ -2,7 +2,7 @@
 document.addEventListener('DOMContentLoaded', function () {
   // Initialize Supabase
   const supabaseUrl = 'https://zavspmqjmrinfxenbosz.supabase.co';
-  const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InphdnNwbXFqbXJpbmZ4ZW5ib3N6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0NTkzOTksImV4cCI6MjEwNDAzNTM5OX0.7K-EFRRgLmLOh8BltHDH0qh61TDLbLlzCjJ5jBMXCc8'; // Replace with your actual anon public key
+  const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InphdnNwbXFqbXJpbmZ4ZW5ib3N6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0NTkzOTksImV4cCI6MjEwNDAzNTM5OX0.7K-EFRRgLmLOh8BltHDH0qh61TDLbLlzCjJ5jBMXCc8';
   const supabaseClient = window.supabase ? window.supabase.createClient(supabaseUrl, supabaseKey) : null;
 
   // year in footer
@@ -58,19 +58,16 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
-  // Optional Google Review Link Formatter (Only affects Google inputs)
+  // Optional Google Review Link Formatter
   function formatGoogleDestination(inputUrl) {
     let finalUrl = inputUrl.trim();
-
     if (finalUrl.includes('search.google.com/local/writereview')) {
       return finalUrl;
     }
-
     const placeIdMatch = finalUrl.match(/(?:placeid=|place_id:)([^&?#]+)/);
     if (placeIdMatch && placeIdMatch[1]) {
       return `https://search.google.com/local/writereview?placeid=${placeIdMatch[1]}`;
     }
-
     return finalUrl;
   }
 
@@ -81,26 +78,24 @@ document.addEventListener('DOMContentLoaded', function () {
       e.preventDefault();
       var biz = document.getElementById('biz-name').value.trim();
       var city = document.getElementById('biz-city').value.trim();
+      var category = document.getElementById('biz-category').value;
       var rawGoogleInput = document.getElementById('biz-google').value.trim();
       var qty = document.getElementById('biz-qty').value;
       var contact = document.getElementById('biz-contact').value.trim();
 
-      if (!biz || !rawGoogleInput || !contact) {
-        showToast('Please enter Business Name, Google URL and WhatsApp Number.');
+      if (!biz || !rawGoogleInput || !contact || !category) {
+        showToast('Please fill in all required fields including category.');
         return;
       }
 
-      // Format destination URL optionally if Google
       var google = formatGoogleDestination(rawGoogleInput);
 
-      // Generate unique slug (e.g., "Cafe Bloom" + "Pune" -> "cafe-bloom-pune")
       var baseText = city ? `${biz}-${city}` : biz;
       var slug = baseText
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '');
 
-      // Store in Supabase registrations table
       if (supabaseClient) {
         try {
           const { error } = await supabaseClient
@@ -108,6 +103,7 @@ document.addEventListener('DOMContentLoaded', function () {
             .insert([{
               business_name: biz,
               city_location: city,
+              category: category,
               destination_url: google,
               whatsapp_number: contact,
               card_quantity: qty,
@@ -128,9 +124,8 @@ document.addEventListener('DOMContentLoaded', function () {
         }
       }
 
-      // WhatsApp redirection
       var ownerPhone = '917620952720';
-      var message = `Hi TapToReview, Business: ${biz} City: ${city} GoogleURL: ${google} Quantity: ${qty} WhatsApp: ${contact} GeneratedSlug: ${slug} Please confirm price and delivery.`;
+      var message = `Hi TapToReview, Business: ${biz} City: ${city} Category: ${category} GoogleURL: ${google} Quantity: ${qty} WhatsApp: ${contact} GeneratedSlug: ${slug} Please confirm price and delivery.`;
       var url = `https://wa.me/${ownerPhone}?text=${encodeURIComponent(message)}`;
       window.open(url, '_blank', 'noopener');
       showToast('Opening WhatsApp with your order — please confirm the message and send.');
@@ -173,18 +168,16 @@ document.addEventListener('DOMContentLoaded', function () {
   async function fetchAndAnimateStats() {
     if (statEls.length === 0) return;
 
-    // 1. Fetch real stats from Supabase
     if (supabaseClient) {
       try {
         const { data, error } = await supabaseClient.rpc('get_platform_stats', {
-          req_platform: 'google' // Change this for your instagram/whatsapp websites
+          req_platform: 'google'
         });
         
         if (!error && data) {
           var bizEl = document.getElementById('stat-biz');
           var tapsEl = document.getElementById('stat-taps');
           
-          // Update the target numbers dynamically
           if (bizEl) bizEl.setAttribute('data-target', data.businesses_onboarded);
           if (tapsEl) tapsEl.setAttribute('data-target', data.total_taps);
         }
@@ -193,7 +186,6 @@ document.addEventListener('DOMContentLoaded', function () {
       }
     }
 
-    // 2. Setup the animation logic
     var animateCount = function (el) {
       var target = parseFloat(el.getAttribute('data-target')) || 0;
       var decimals = parseInt(el.getAttribute('data-decimal') || '0', 10);
@@ -210,7 +202,6 @@ document.addEventListener('DOMContentLoaded', function () {
       requestAnimationFrame(step);
     };
 
-    // 3. Trigger animations when scrolled into view
     if ('IntersectionObserver' in window) {
       var statObserver = new IntersectionObserver(function (entries) {
         entries.forEach(function (entry) {
@@ -229,6 +220,67 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
-  // Execute the fetch and setup
   fetchAndAnimateStats();
+
+  // --- Dynamic Monthly Leaderboard ---
+  async function loadLeaderboard(selectedCategory = 'All') {
+    var tbody = document.getElementById('leaderboard-body');
+    if (!tbody || !supabaseClient) return;
+
+    try {
+      const { data, error } = await supabaseClient.rpc('get_monthly_leaderboard', {
+        req_platform: 'google',
+        req_category: selectedCategory
+      });
+
+      if (error) {
+        console.error('Error fetching leaderboard:', error);
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: #ef4444;">Unable to load leaderboard at the moment.</td></tr>`;
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--muted);">No taps recorded yet this month. Be the first!</td></tr>`;
+        return;
+      }
+
+      let html = '';
+      data.forEach((row, index) => {
+        let rankBadge = index + 1;
+        if (index === 0) rankBadge = '🥇 1';
+        else if (index === 1) rankBadge = '🥈 2';
+        else if (index === 2) rankBadge = '🥉 3';
+
+        html += `
+          <tr>
+            <td><strong>${rankBadge}</strong></td>
+            <td>${escapeHtml(row.business_name)}</td>
+            <td><span class="cat-tag">${escapeHtml(row.category)}</span></td>
+            <td><strong>${row.monthly_taps_count.toLocaleString('en-IN')} taps</strong></td>
+          </tr>
+        `;
+      });
+      tbody.innerHTML = html;
+    } catch (err) {
+      console.error('Leaderboard exception:', err);
+    }
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  var filterContainer = document.getElementById('lb-filters');
+  if (filterContainer) {
+    filterContainer.addEventListener('click', function (e) {
+      if (e.target.classList.contains('filter-btn')) {
+        document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+        e.target.classList.add('active');
+        loadLeaderboard(e.target.getAttribute('data-cat'));
+      }
+    });
+  }
+
+  loadLeaderboard('All');
 });
